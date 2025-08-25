@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Finboard — P/E Ranking</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --card:#fff; --border:#e9ecef; --shadow:0 1px 4px rgba(0,0,0,.06); --blue:#1f7aed; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color:#111827; }
+    a { color: var(--blue); text-decoration: none; }
+    header { display:flex; align-items:center; gap:16px; margin-bottom:14px; }
+    nav a { margin-right:12px; opacity:.8 }
+    nav a:hover { opacity:1 }
+    h1 { margin:0; font-size:24px; font-weight:700; }
+    .controls { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin: 12px 0 18px; }
+    .controls input, .controls select, .controls button {
+      padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:#fff;
+    }
+    .controls button { cursor:pointer; border-color:var(--blue); background:var(--blue); color:#fff; box-shadow:var(--shadow); }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); padding:14px; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; font-size:14px; }
+    th { background:#f8fafc; font-weight:600; cursor:pointer; }
+    .right { text-align:right; }
+    .muted { color:#6b7280; }
+    .pill { padding:4px 8px; border-radius:999px; border:1px solid var(--border); }
+    @media (max-width:640px) { .controls { flex-direction:column; align-items:stretch; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>P/E Ranking</h1>
+    <nav class="muted">
+      <a href="/">Dashboard</a>
+      <a href="/screener/">Screener</a>
+    </nav>
+  </header>
+
+  <div class="controls">
+    <label>Sector:</label>
+    <input id="sector" placeholder="e.g. Technology" />
+    <label>Min MarketCap (USD):</label>
+    <input id="minmc" type="number" step="1" placeholder="e.g. 200000000000" style="width:220px" />
+    <label>Limit:</label>
+    <select id="limit">
+      <option>50</option><option selected>100</option><option>200</option>
+    </select>
+    <button id="refresh">Refresh</button>
+    <a id="csv" class="pill" href="#" download>Download CSV</a>
+  </div>
+
+  <div class="card">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th style="width:70px;">Rank</th>
+          <th style="width:110px;">Ticker</th>
+          <th>Name</th>
+          <th style="width:160px;">Sector</th>
+          <th class="right" style="width:110px;">P/E (TTM)</th>
+          <th class="right" style="width:140px;">Market Cap</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted" id="count" style="margin-top:8px;"></p>
+  </div>
+
+<script>
+function fmtNumber(x, d=2){
+  if (x==null || isNaN(x)) return "—";
+  x = Number(x);
+  if (Math.abs(x) >= 1e12) return (x/1e12).toFixed(d)+"T";
+  if (Math.abs(x) >= 1e9)  return (x/1e9).toFixed(d)+"B";
+  if (Math.abs(x) >= 1e6)  return (x/1e6).toFixed(d)+"M";
+  if (Math.abs(x) >= 1e3)  return (x/1e3).toFixed(d)+"K";
+  return x.toFixed(d);
+}
+
+function params(){
+  const p = new URLSearchParams();
+  const sector = document.getElementById('sector').value.trim();
+  const minmc  = document.getElementById('minmc').value.trim();
+  const limit  = document.getElementById('limit').value;
+  if (sector) p.set('sector', sector);
+  if (minmc)  p.set('min_marketcap', minmc);
+  p.set('limit', limit);
+  return p;
+}
+
+async function load(){
+  const p = params();
+  const res = await fetch('/api/rankings/pe/?'+p.toString());
+  const data = await res.json();
+  const tb = document.querySelector('#tbl tbody');
+  tb.innerHTML = '';
+  data.forEach((r,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td><a href="/?ticker=${r.ticker}">${r.ticker}</a></td>
+      <td>${r.name ?? ''}</td>
+      <td>${r.sector ?? ''}</td>
+      <td class="right">${Number(r.pe_ttm).toFixed(2)}</td>
+      <td class="right">$${fmtNumber(r.marketcap)}</td>`;
+    tb.appendChild(tr);
+  });
+  document.getElementById('count').textContent = `${data.length} results`;
+  // CSV link uses the screener (same outcome) for convenience
+  const p2 = params(); p2.set('order','pe_ttm'); p2.set('format','csv');
+  document.getElementById('csv').href = '/api/screener/?'+p2.toString();
+}
+
+document.getElementById('refresh').onclick = load;
+load();
+</script>
+</body>
+</html>

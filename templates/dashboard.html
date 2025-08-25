@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Finboard — Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    :root { --card: #fff; --border: #e9ecef; --shadow: 0 1px 4px rgba(0,0,0,.06); }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color: #111827; }
+    h1 { margin: 0 0 12px 0; font-size: 24px; font-weight: 700; }
+    h2 { font-size: 18px; margin: 0 0 12px 0; }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 12px 0 18px; }
+    .controls input, .controls select, .controls button { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
+    .controls button { cursor: pointer; border-color: #1f7aed; background: #1f7aed; color: white; box-shadow: var(--shadow); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; }
+    th { background: #f8fafc; font-weight: 600; }
+    .muted { color: #6b7280; }
+    .kvs { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 8px 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px dashed #eef2f7; }
+    .kv:last-child { border-bottom: 0; }
+    .right { text-align: right; }
+    .bad { color: #b91c1c; }
+    .good { color: #065f46; }
+    @media (max-width: 480px) {
+      .controls { flex-direction: column; align-items: stretch; }
+      .kvs { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Finboard</h1>
+  <p class="muted">Interactive dashboard for prices, revenues, and rankings. Use the filters below.</p>
+
+  <!-- Controls -->
+  <div class="controls">
+    <label for="ticker">Ticker:</label>
+    <select id="ticker">
+      {% for t in tickers %}<option value="{{t}}">{{t}}</option>{% endfor %}
+    </select>
+    <button id="load">Load charts</button>
+
+    <span class="muted" style="margin-left:8px;">|</span>
+
+    <label for="sector">Sector:</label>
+    <input id="sector" placeholder="e.g. Technology" />
+
+    <label for="minmc">Min MarketCap (USD):</label>
+    <input id="minmc" type="number" step="1" placeholder="e.g. 200000000000" style="width:220px" />
+    <button id="refresh">Refresh ranking</button>
+  </div>
+
+  <!-- Charts + Metrics -->
+  <div class="grid" style="margin-top: 10px;">
+    <div class="card">
+      <h2>Price (Daily Close)</h2>
+      <div id="price" style="height: 360px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Revenue (Quarterly)</h2>
+      <div id="revenue" style="height: 360px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Key Metrics (latest)</h2>
+      <div id="metrics">
+        <div class="kvs" id="metrics-kvs">
+          <!-- Filled by JS -->
+        </div>
+        <p class="muted" id="metrics-period"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ranking -->
+  <h2 style="margin-top: 24px;">Latest Ranking</h2>
+  <div class="card">
+    <table id="ranking">
+      <thead>
+        <tr>
+          <th style="width:80px;">Rank</th>
+          <th style="width:120px;">Ticker</th>
+          <th>Score (z-weighted)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+function fmtNumber(x, digits = 2) {
+  if (x === null || x === undefined || isNaN(x)) return "—";
+  const n = Number(x);
+  if (!isFinite(n)) return "—";
+  if (Math.abs(n) >= 1e12) return (n/1e12).toFixed(digits) + "T";
+  if (Math.abs(n) >= 1e9)  return (n/1e9).toFixed(digits) + "B";
+  if (Math.abs(n) >= 1e6)  return (n/1e6).toFixed(digits) + "M";
+  if (Math.abs(n) >= 1e3)  return (n/1e3).toFixed(digits) + "K";
+  return n.toFixed(digits);
+}
+function fmtPct(x, digits = 2) {
+  if (x === null || x === undefined || isNaN(x)) return "—";
+  return (Number(x) * 100).toFixed(digits) + "%";
+}
+
+async function loadCharts(ticker) {
+  const [price, rev] = await Promise.all([
+    fetch(`/api/charts/${ticker}/price/`).then(r=>r.json()),
+    fetch(`/api/charts/${ticker}/revenue/`).then(r=>r.json())
+  ]);
+  const pfig = JSON.parse(price.figure);
+  const rfig = JSON.parse(rev.figure);
+  Plotly.react('price', pfig.data, Object.assign({margin:{t:40,r:10,b:40,l:50}}, pfig.layout));
+  Plotly.react('revenue', rfig.data, Object.assign({margin:{t:40,r:10,b:40,l:50}}, rfig.layout));
+}
+
+async function loadMetrics(ticker) {
+  const res = await fetch(`/api/metrics/${ticker}/latest/`);
+  if (!res.ok) return;
+  const data = await res.json();
+  const m = data.metrics || {};
+  const el = document.getElementById('metrics-kvs');
+  el.innerHTML = "";
+
+  // Choose a set of useful keys to display if present
+  const rows = [
+    ["Price", v => "$" + fmtNumber(v, 2)],
+    ["MarketCap", v => "$" + fmtNumber(v, 2)],
+    ["Revenue_TTM", v => "$" + fmtNumber(v, 2)],
+    ["NetIncome_TTM", v => "$" + fmtNumber(v, 2)],
+    ["EV_Sales", v => fmtNumber(v, 2)],
+    ["EV_EBITDA", v => fmtNumber(v, 2)],
+    ["PE_TTM", v => fmtNumber(v, 2)],
+    ["FCF_TTM", v => "$" + fmtNumber(v, 2)],
+    ["FCF_Margin_TTM", v => fmtPct(v, 1)],
+    ["GrossMargin_TTM", v => fmtPct(v, 1)],
+    ["OpMargin_TTM", v => fmtPct(v, 1)],
+    ["NetMargin_TTM", v => fmtPct(v, 1)],
+    ["CurrentRatio", v => fmtNumber(v, 2)],
+    ["DebtToAssets", v => fmtPct(v, 1)],
+    ["RSI_14", v => fmtNumber(v, 1)],
+    ["SMA_50", v => "$" + fmtNumber(v, 2)],
+    ["SMA_200", v => "$" + fmtNumber(v, 2)],
+  ];
+
+  let latestDate = null;
+  for (const [key, fmt] of rows) {
+    if (m[key]) {
+      const val = m[key].value;
+      const period = m[key].period_end;
+      latestDate = latestDate || period;
+      const div = document.createElement('div');
+      div.className = "kv";
+      const formatted = fmt(val);
+      let cls = "";
+      if (key === "RSI_14") {
+        if (val >= 70) cls = "bad"; else if (val <= 30) cls = "good";
+      }
+      div.innerHTML = `<span class="muted">${key}</span><span class="right ${cls}">${formatted}</span>`;
+      el.appendChild(div);
+    }
+  }
+  document.getElementById('metrics-period').textContent = latestDate ? `As of: ${latestDate}` : "";
+}
+
+async function loadRanking() {
+  const sector = document.getElementById('sector').value.trim();
+  const minmc = document.getElementById('minmc').value.trim();
+  const params = new URLSearchParams();
+  if (sector) params.set('sector', sector);
+  if (minmc) params.set('min_marketcap', minmc);
+  params.set('limit', '100');
+
+  const res = await fetch('/api/rankings/latest/?' + params.toString());
+  const data = await res.json();
+  const tbody = document.querySelector('#ranking tbody');
+  tbody.innerHTML = '';
+  data.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${row.rank}</td><td>${row.company.ticker}</td><td>${Number(row.score).toFixed(3)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('load').onclick = () => {
+  const t = document.getElementById('ticker').value;
+  loadCharts(t);
+  loadMetrics(t);
+};
+document.getElementById('refresh').onclick = loadRanking;
+
+// Initial load
+document.getElementById('load').click();
+loadRanking();
+</script>
+</body>
+</html>
