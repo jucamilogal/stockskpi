@@ -3,20 +3,21 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from core.views import dashboard, pe_view, screener_view
+from core.views import dashboard
+from charts.views import pe_view, screener_view
 from api.views import LatestRankingViewSet, CompanyRevenueChart, CompanyPriceChart, MetricsLatestByTicker, PERanking, Screener
 
 router = DefaultRouter()
 router.register(r"rankings/latest", LatestRankingViewSet, basename="rankings-latest")
 
 urlpatterns = [
-    path("", dashboard),
+    path("admin/", admin.site.urls),
+    path("", dashboard, name="dashboard"),
     path("pe/", pe_view, name="pe"),
     path("screener/", screener_view, name="screener"),
-    path("admin/", admin.site.urls),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema")),
-    path("api/", include(router.urls)),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/", include(router.urls)),  
 
     # charts
     path("api/charts/<str:ticker>/revenue/", CompanyRevenueChart.as_view(), name="company-revenue-chart"),

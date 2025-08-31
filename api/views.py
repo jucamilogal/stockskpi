@@ -1,4 +1,7 @@
 from django.http import HttpResponse
+from rest_framework import viewsets, mixins
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from rankings.models import Ranking, RankingResult
 from .serializers import RankingResultSerializer
@@ -11,8 +14,12 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 import csv, math
 
+import pandas as pd
+
 from companies.models import Company
 from fundamentals.models import Metric
+from api.serializers import MetricSerializer
+from api.filters import MetricFilter
 
 class LatestRankingViewSet(ReadOnlyModelViewSet):
     serializer_class = RankingResultSerializer
@@ -337,3 +344,59 @@ class Screener(APIView):
 
         # JSON response
         return Response([{k: r.get(k) for k in fields} for r in rows])
+    
+    # --- API REST: listado/consulta de métricas con filtros/ordenación ---
+@method_decorator(cache_page(60), name="dispatch")  # cache 60s
+class MetricViewSet(mixins.ListModelMixin,
+                    mixins.RetrieveModelMixin,
+                    viewsets.GenericViewSet):
+    queryset = (
+        Metric.objects
+        .select_related("company")
+        .only("id", "key", "value", "period_end", "period_type",
+              "company__ticker", "company__name", "company__sector")
+    )
+    serializer_class = MetricSerializer
+    filterset_class = MetricFilter
+    permission_classes = [AllowAny]
+    ordering_fields = ["value", "period_end", "company__ticker", "company__name", "company__sector"]
+    search_fields = ["company__ticker", "company__name"]
+
+# --- Export: CSV y XLSX aplicando LOS MISMOS filtros ---
+def _filtered_metrics_queryset(request):
+    qs = MetricViewSet.queryset
+    f = MetricFilter(request.GET, queryset=qs)
+    return f.qs
+
+@cache_page(60)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def export_metrics_csv(request):
+    qs = _filtered_metrics_queryset(request)
+    rows = qs.values(
+        "company__ticker", "company__name", "company__sector",
+        "key", "value", "period_end", "period_type"
+    )
+    df = pd.DataFrame(rows)
+    resp = HttpResponse(content_type="text/csv")
+    resp["Content-Disposition"] = 'attachment; filename="metrics.csv"'
+    df.to_csv(resp, index=False)
+    return resp
+
+@cache_page(60)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def export_metrics_xlsx(request):
+    qs = _filtered_metrics_queryset(request)
+    rows = qs.values(
+        "company__ticker", "company__name", "company__sector",
+        "key", "value", "period_end", "period_type"
+    )
+    df = pd.DataFrame(rows)
+    resp = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    resp["Content-Disposition"] = 'attachment; filename="metrics.xlsx"'
+    with pd.ExcelWriter(resp, engine="xlsxwriter") as xw:
+        df.to_excel(xw, index=False, sheet_name="metrics")
+    return resp

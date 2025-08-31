@@ -1,4 +1,5 @@
 <!doctype html>
+{% load humanize %}
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -17,8 +18,6 @@
     input, select, button { padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:#fff; }
     button { cursor:pointer; border-color:var(--blue); background:var(--blue); color:#fff; box-shadow:var(--shadow); }
     .card { background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); padding:14px; }
-    .chip { display:inline-flex; align-items:center; gap:6px; margin:4px 6px 0 0; padding:4px 8px; border:1px solid var(--border); border-radius:999px; background:#f8fafc; }
-    .chip button { background:none; border:none; color:#ef4444; padding:0 2px; cursor:pointer; }
     table { width:100%; border-collapse: collapse; }
     th, td { padding:10px 12px; border-bottom:1px solid var(--border); text-align:left; font-size:14px; }
     th { background:#f8fafc; font-weight:600; }
@@ -36,81 +35,23 @@
     </nav>
   </header>
 
-  <!-- Global filters -->
-  <div class="row controls">
+  <!-- Filtros globales (GET) -->
+  <form method="get" class="row controls" action="">
     <label>Sector:</label>
-    <input id="sector" placeholder="e.g. Technology">
+    <input name="sector" list="sectors" placeholder="e.g. Technology" value="{{ selected_sector|default:'' }}">
+    <datalist id="sectors">
+      {% for s in sectors %}
+        <option value="{{ s }}"></option>
+      {% endfor %}
+    </datalist>
+
     <label>Min MarketCap (USD):</label>
-    <input id="minmc" type="number" step="1" placeholder="e.g. 10000000000" style="width:220px">
-  </div>
-
-  <!-- Query builder -->
-  <div class="card" style="margin-bottom:14px;">
-    <div class="row">
-      <label>Metric:</label>
-      <select id="metric">
-        <optgroup label="Valuation">
-          <option value="pe_ttm">P/E (TTM)</option>
-          <option value="ev_sales">EV/Sales</option>
-          <option value="ev_ebitda">EV/EBITDA</option>
-          <option value="fcf_margin_ttm">FCF Margin (TTM)</option>
-        </optgroup>
-        <optgroup label="Profitability / Growth">
-          <option value="revenue_yoy">Revenue YoY</option>
-          <option value="op_margin_ttm">Op Margin (TTM)</option>
-          <option value="net_margin_ttm">Net Margin (TTM)</option>
-        </optgroup>
-        <optgroup label="Balance / Risk">
-          <option value="currentratio">Current Ratio</option>
-          <option value="debttoassets">Debt / Assets</option>
-          <option value="vol_30d">Vol 30d</option>
-        </optgroup>
-        <optgroup label="Technicals">
-          <option value="rsi_14">RSI 14</option>
-          <option value="distto52whigh">Dist to 52w High</option>
-          <option value="distto52wlow">Dist to 52w Low</option>
-        </optgroup>
-      </select>
-
-      <label>Op:</label>
-      <select id="op">
-        <option value="lte"><=</option>
-        <option value="gte">>=</option>
-        <option value="lt"><</option>
-        <option value="gt">></option>
-        <option value="eq">=</option>
-        <option value="ne">!=</option>
-        <option value="between">between</option>
-      </select>
-
-      <input id="val" placeholder="value or a,b for between" style="min-width:220px">
-      <button id="add">Add filter</button>
-
-      <label style="margin-left:12px">Order:</label>
-      <select id="order">
-        <option value="pe_ttm">pe_ttm ↑</option>
-        <option value="-pe_ttm">pe_ttm ↓</option>
-        <option value="ev_sales">ev_sales ↑</option>
-        <option value="-ev_sales">ev_sales ↓</option>
-        <option value="revenue_yoy">revenue_yoy ↑</option>
-        <option value="-revenue_yoy">revenue_yoy ↓</option>
-      </select>
-
-      <label>Limit:</label>
-      <select id="limit">
-        <option>50</option><option selected>100</option><option>200</option>
-      </select>
-
-      <button id="run">Run</button>
-      <a id="csv" class="muted" href="#" download>Download CSV</a>
-    </div>
-
-    <div id="chips" style="margin-top:8px;"></div>
-    <p class="muted" style="margin-top:6px;">Tip: percentages are decimals (e.g., 0.10 = 10%). “between” accepts “a,b”.</p>
-  </div>
+    <input name="min_mcap" type="number" step="1" placeholder="e.g. 10000000000" style="width:220px" value="{{ min_mcap|default:'' }}">
+    <button type="submit">Filtrar</button>
+  </form>
 
   <div class="card">
-    <table id="tbl">
+    <table>
       <thead>
         <tr>
           <th style="width:70px;">#</th>
@@ -120,97 +61,38 @@
           <th class="right">MarketCap</th>
           <th class="right">P/E</th>
           <th class="right">EV/Sales</th>
-          <th class="right">FCF Margin</th>
-          <th class="right">Rev YoY</th>
+          <th class="right">FCF&nbsp;Yield</th>
+          <th class="right">Rev&nbsp;YoY</th>
           <th class="right">RSI14</th>
         </tr>
       </thead>
-      <tbody></tbody>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td><a href="/?ticker={{ r.ticker }}">{{ r.ticker }}</a></td>
+            <td>{{ r.name|default:"" }}</td>
+            <td>{{ r.sector|default:"" }}</td>
+            <td class="right">
+              {% if r.marketcap %}${{ r.marketcap|floatformat:0|intcomma }}{% else %}—{% endif %}
+            </td>
+            <td class="right">{% if r.pe_ttm != None %}{{ r.pe_ttm|floatformat:2 }}{% else %}—{% endif %}</td>
+            <td class="right">{% if r.ev_sales != None %}{{ r.ev_sales|floatformat:2 }}{% else %}—{% endif %}</td>
+            <!-- En la vista vienen como decimales (0.10=10%). Aquí los mostramos como % entero usando widthratio -->
+            <td class="right">
+              {% if r.fcf_yield != None %}{% widthratio r.fcf_yield 1 100 %}%{% else %}—{% endif %}
+            </td>
+            <td class="right">
+              {% if r.rev_yoy != None %}{% widthratio r.rev_yoy 1 100 %}%{% else %}—{% endif %}
+            </td>
+            <td class="right">{% if r.rsi14 != None %}{{ r.rsi14|floatformat:1 }}{% else %}—{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="10" class="muted">No results</td></tr>
+        {% endfor %}
+      </tbody>
     </table>
-    <p class="muted" id="count" style="margin-top:8px;"></p>
+    <p class="muted" style="margin-top:8px;">{{ rows|length }} results</p>
   </div>
-
-<script>
-const filters = []; // {alias, op, val}
-
-function fmtNumber(x, d=2){
-  if (x==null || isNaN(x)) return "—";
-  x = Number(x);
-  if (Math.abs(x) >= 1e12) return (x/1e12).toFixed(d)+"T";
-  if (Math.abs(x) >= 1e9)  return (x/1e9).toFixed(d)+"B";
-  if (Math.abs(x) >= 1e6)  return (x/1e6).toFixed(d)+"M";
-  if (Math.abs(x) >= 1e3)  return (x/1e3).toFixed(d)+"K";
-  return x.toFixed(d);
-}
-const pct = x => (x==null || isNaN(x)) ? "—" : (Number(x)*100).toFixed(1)+"%";
-
-function rebuildChips(){
-  const wrap = document.getElementById('chips');
-  wrap.innerHTML = '';
-  filters.forEach((f,i)=>{
-    const chip = document.createElement('span');
-    chip.className = 'chip';
-    chip.innerHTML = `<span>${f.alias} ${f.op} ${f.val}</span><button title="remove">&times;</button>`;
-    chip.querySelector('button').onclick = ()=>{ filters.splice(i,1); rebuildChips(); };
-    wrap.appendChild(chip);
-  });
-}
-
-document.getElementById('add').onclick = ()=>{
-  const alias = document.getElementById('metric').value;
-  const op    = document.getElementById('op').value;
-  const val   = document.getElementById('val').value.trim();
-  if(!val) return;
-  filters.push({alias, op, val});
-  rebuildChips();
-  document.getElementById('val').value = '';
-};
-
-function buildParams(csv=false){
-  const p = new URLSearchParams();
-  const sector = document.getElementById('sector').value.trim();
-  const minmc  = document.getElementById('minmc').value.trim();
-  const order  = document.getElementById('order').value;
-  const limit  = document.getElementById('limit').value;
-  if (sector) p.set('sector', sector);
-  if (minmc)  p.set('min_marketcap', minmc);
-  p.set('order', order);
-  p.set('limit', limit);
-  filters.forEach(f => p.set(`${f.alias}__${f.op}`, f.val));
-  if (csv) p.set('format','csv');
-  // choose fields for table/CSV
-  p.set('fields','rank,ticker,name,sector,marketcap,pe_ttm,ev_sales,fcf_margin_ttm,revenue_yoy,rsi_14');
-  return p;
-}
-
-async function run(){
-  const p = buildParams(false);
-  const res = await fetch('/api/screener/?'+p.toString());
-  const data = await res.json();
-  const tb = document.querySelector('#tbl tbody');
-  tb.innerHTML = '';
-  data.forEach((r,i)=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.rank}</td>
-      <td><a href="/?ticker=${r.ticker}">${r.ticker}</a></td>
-      <td>${r.name ?? ''}</td>
-      <td>${r.sector ?? ''}</td>
-      <td class="right">$${fmtNumber(r.marketcap)}</td>
-      <td class="right">${r.pe_ttm!=null ? Number(r.pe_ttm).toFixed(2) : '—'}</td>
-      <td class="right">${r.ev_sales!=null ? Number(r.ev_sales).toFixed(2) : '—'}</td>
-      <td class="right">${pct(r.fcf_margin_ttm)}</td>
-      <td class="right">${pct(r.revenue_yoy)}</td>
-      <td class="right">${r.rsi_14!=null ? Number(r.rsi_14).toFixed(1) : '—'}</td>`;
-    tb.appendChild(tr);
-  });
-  document.getElementById('count').textContent = `${data.length} results`;
-  document.getElementById('csv').href = '/api/screener/?'+buildParams(true).toString();
-}
-document.getElementById('run').onclick = run;
-
-// initial
-run();
-</script>
 </body>
 </html>
