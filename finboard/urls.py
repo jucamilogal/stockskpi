@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from core.views import dashboard
-from charts.views import pe_view, screener_view
+from charts.views import pe_plus_view, pe_view, screener_view
 from api.views import LatestRankingViewSet, CompanyRevenueChart, CompanyPriceChart, MetricsLatestByTicker, PERanking, Screener
 
 router = DefaultRouter()
@@ -14,6 +14,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", dashboard, name="dashboard"),
     path("pe/", pe_view, name="pe"),
+     path("pe+/", pe_plus_view, name="pe-plus"),
     path("screener/", screener_view, name="screener"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),

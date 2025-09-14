@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">P/E+ Ranking (Multi-factor)</h1>
+    <div class="small">
+      <a href="/dashboard/" class="me-3">Dashboard</a>
+      <a href="/screener/" class="me-3">Screener</a>
+      <a href="/pe/">P/E clásico</a>
+    </div>
+  </div>
+
+  <!-- Controles -->
+  <form id="controls" method="get" class="row g-3 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label">Sector</label>
+      <input name="sector" class="form-control"
+             placeholder="e.g. Technology"
+             value="{{ selected_sector }}"
+             list="sectors">
+      <!-- datalist con sectores vistos en la tabla actual -->
+      <datalist id="sectors">
+        {% for r in rows|dictsort:"sector" %}
+          {% if r.sector %}
+          <option value="{{ r.sector }}"></option>
+          {% endif %}
+        {% endfor %}
+      </datalist>
+    </div>
+
+    <div class="col-6 col-md-3">
+      <label class="form-label">Min MarketCap (USD)</label>
+      <input name="min_mcap" class="form-control" type="number" step="any"
+             placeholder="e.g. 10000000000"
+             value="{{ min_mcap }}">
+    </div>
+
+    <div class="col-6 col-md-3">
+      <label class="form-label">Orden</label>
+      <select name="order" class="form-select">
+        <option value="score_desc" {% if order == "score_desc" %}selected{% endif %}>Score ↓</option>
+        <option value="score_asc"  {% if order == "score_asc" %}selected{% endif %}>Score ↑</option>
+        <option value="pe_asc"     {% if order == "pe_asc" %}selected{% endif %}>P/E ↑</option>
+        <option value="pe_desc"    {% if order == "pe_desc" %}selected{% endif %}>P/E ↓</option>
+        <option value="evs_asc"    {% if order == "evs_asc" %}selected{% endif %}>EV/Sales ↑</option>
+        <option value="evs_desc"   {% if order == "evs_desc" %}selected{% endif %}>EV/Sales ↓</option>
+        <option value="yoy_desc"   {% if order == "yoy_desc" %}selected{% endif %}>Revenue YoY ↓</option>
+        <option value="yoy_asc"    {% if order == "yoy_asc" %}selected{% endif %}>Revenue YoY ↑</option>
+        <option value="nm_desc"    {% if order == "nm_desc" %}selected{% endif %}>Net Margin ↓</option>
+        <option value="nm_asc"     {% if order == "nm_asc" %}selected{% endif %}>Net Margin ↑</option>
+        <option value="rsi_desc"   {% if order == "rsi_desc" %}selected{% endif %}>RSI14 ↓</option>
+        <option value="rsi_asc"    {% if order == "rsi_asc" %}selected{% endif %}>RSI14 ↑</option>
+        <option value="mcap_desc"  {% if order == "mcap_desc" %}selected{% endif %}>MarketCap ↓</option>
+        <option value="mcap_asc"   {% if order == "mcap_asc" %}selected{% endif %}>MarketCap ↑</option>
+      </select>
+    </div>
+
+    <!-- Pesos -->
+    <div class="col-6 col-md-2">
+      <label class="form-label">W P/E</label>
+      <input name="w_pe" type="number" step="0.01" class="form-control"
+             value="{{ weights.w_pe }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">W EV/Sales</label>
+      <input name="w_evs" type="number" step="0.01" class="form-control"
+             value="{{ weights.w_evs }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">W Rev YoY</label>
+      <input name="w_yoy" type="number" step="0.01" class="form-control"
+             value="{{ weights.w_yoy }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">W Net Margin</label>
+      <input name="w_nm" type="number" step="0.01" class="form-control"
+             value="{{ weights.w_nm }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">W RSI14</label>
+      <input name="w_rsi" type="number" step="0.01" class="form-control"
+             value="{{ weights.w_rsi }}">
+    </div>
+
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary me-2">Filtrar</button>
+      <button type="button" id="btnCsv" class="btn btn-outline-secondary">Exportar CSV</button>
+      <span class="text-muted ms-2 small">
+        Tip: los pesos son libres; el score se calcula con min-max normalizado (P/E y EV/Sales “menor es mejor”).
+      </span>
+    </div>
+  </form>
+
+  <!-- Tabla -->
+  <div class="card mt-4">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:60px">#</th>
+              <th>Ticker</th>
+              <th>Name</th>
+              <th>Sector</th>
+              <th class="text-end">MarketCap</th>
+              <th class="text-end">P/E (TTM)</th>
+              <th class="text-end">EV/Sales</th>
+              <th class="text-end">EV/EBITDA</th>
+              <th class="text-end">Revenue YoY</th>
+              <th class="text-end">Net Margin TTM</th>
+              <th class="text-end">RSI14</th>
+              <th class="text-end">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if rows and rows|length > 0 %}
+              {% for r in rows %}
+              <tr>
+                <td>{{ r.rank }}</td>
+                <td>
+                  <a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener">
+                    {{ r.ticker }}
+                  </a>
+                </td>
+                <td>{{ r.name }}</td>
+                <td>{{ r.sector }}</td>
+                <td class="text-end">{{ r.marketcap|default_if_none:"" }}</td>
+                <td class="text-end">{{ r.pe_ttm|default_if_none:""|floatformat:2 }}</td>
+                <td class="text-end">{{ r.ev_sales|default_if_none:""|floatformat:2 }}</td>
+                <td class="text-end">{{ r.ev_ebitda|default_if_none:""|floatformat:2 }}</td>
+                <td class="text-end">{{ r.rev_yoy|default_if_none:""|floatformat:2 }}</td>
+                <td class="text-end">{{ r.net_margin_ttm|default_if_none:""|floatformat:2 }}</td>
+                <td class="text-end">{{ r.rsi14|default_if_none:""|floatformat:1 }}</td>
+                <td class="text-end"><strong>{{ r.score|default_if_none:""|floatformat:3 }}</strong></td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="12" class="text-center text-muted py-4">
+                  No hay resultados con los filtros actuales.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Construye la URL de exportación CSV conservando los filtros actuales
+  (function () {
+    var btn = document.getElementById('btnCsv');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var form = document.getElementById('controls');
+      var params = new URLSearchParams(new FormData(form));
+      params.set('format', 'csv');
+      // Si tienes nombre de ruta, cámbialo por {% url 'pe-plus' %}
+      var base = window.location.pathname;
+      window.location.href = base + '?' + params.toString();
+    });
+  })();
+</script>
+{% endblock %}
