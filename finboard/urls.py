@@ -7,6 +7,8 @@ from core.views import dashboard
 from charts.views import pe_plus_view, pe_view, screener_view
 from api.views import LatestRankingViewSet, CompanyRevenueChart, CompanyPriceChart, MetricsLatestByTicker, PERanking, Screener
 
+from charts.views import company_dashboard
+
 router = DefaultRouter()
 router.register(r"rankings/latest", LatestRankingViewSet, basename="rankings-latest")
 
@@ -16,6 +18,7 @@ urlpatterns = [
     path("pe/", pe_view, name="pe"),
      path("pe+/", pe_plus_view, name="pe-plus"),
     path("screener/", screener_view, name="screener"),
+    path("stock/<str:ticker>/", company_dashboard, name="company-dashboard"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/", include(router.urls)),  

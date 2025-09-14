@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-3">
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between">
+    <h1 class="h4 mb-0">{{ company.ticker }} — {{ company.name }}</h1>
+    <div class="small">
+      <a href="/pe+/" class="me-3">Volver a P/E+</a>
+      <a href="/screener/" class="me-3">Screener</a>
+      <a href="/dashboard/">Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Grid of charts -->
+  <div class="row g-3 mt-2">
+    <div class="col-12 col-lg-6">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title mb-2">Revenue (Quarterly)</h6>
+        <div id="chart-revenue" style="height:320px;"></div>
+      </div></div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title mb-2">EPS (Quarterly)</h6>
+        <div id="chart-eps" style="height:320px;"></div>
+      </div></div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title mb-2">P/E (TTM)</h6>
+        <div id="chart-pe" style="height:320px;"></div>
+      </div></div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title mb-2">EV/Sales</h6>
+        <div id="chart-evs" style="height:320px;"></div>
+      </div></div>
+    </div>
+
+    <div class="col-12">
+      <div class="card"><div class="card-body">
+        <h6 class="card-title mb-2">EBITDA</h6>
+        <div id="chart-ebitda" style="height:360px;"></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Plotly (CDN) -->
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+<!-- Series passed from the view as safe JSON -->
+<script id="series-data" type="application/json">
+  {{ series_json|safe }}
+</script>
+
+<script>
+  const S = JSON.parse(document.getElementById('series-data').textContent || "{}");
+
+  function mkTrace(series, name) {
+    const x = (series || []).map(p => p[0]);   // ISO date strings
+    const y = (series || []).map(p => p[1]);   // floats
+    return [{ x, y, mode: 'lines+markers', name }];
+  }
+
+  function layout(title, ytitle) {
+    return {
+      title,
+      margin: { l: 50, r: 10, t: 30, b: 30 },
+      xaxis: { title: '', type: 'date' },
+      yaxis: { title: ytitle, automargin: true },
+      showlegend: false
+    };
+  }
+
+  Plotly.newPlot('chart-revenue', mkTrace(S.revenue, 'Revenue'),
+                 layout('Revenue (Quarterly)', 'USD'));
+
+  Plotly.newPlot('chart-eps', mkTrace(S.eps, 'EPS'),
+                 layout('EPS (Quarterly)', 'USD'));
+
+  Plotly.newPlot('chart-pe', mkTrace(S.pe_ttm, 'P/E (TTM)'),
+                 layout('P/E (TTM)', 'x'));
+
+  Plotly.newPlot('chart-evs', mkTrace(S.ev_sales, 'EV/Sales'),
+                 layout('EV/Sales', 'x'));
+
+  Plotly.newPlot('chart-ebitda', mkTrace(S.ebitda, 'EBITDA'),
+                 layout('EBITDA', 'USD'));
+</script>
+{% endblock %}

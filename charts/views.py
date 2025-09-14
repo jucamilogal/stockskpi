@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import csv
+import json
 from typing import Dict, List
 
 from django.http import HttpResponse
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.views.decorators.cache import cache_page
 
 from companies.models import Company
-from fundamentals.models import Metric
+from fundamentals.models import Statement, Metric
 
 from math import isfinite
 
@@ -349,3 +350,70 @@ def pe_plus_view(request):
         "weights": {"w_pe": w_pe, "w_evs": w_evs, "w_yoy": w_yoy, "w_nm": w_nm, "w_rsi": w_rsi},
     })
 
+def _series_from_statement(company, field, fallbacks=None):
+    fallbacks = fallbacks or []
+    qs = (Statement.objects
+          .filter(company=company, statement_type="IS", period_type="Q")
+          .only("period_end", "json_payload")
+          .order_by("period_end"))
+    out = []
+    for s in qs:
+        v = s.json_payload.get(field)
+        if v is None:
+            for alt in fallbacks:
+                v = s.json_payload.get(alt)
+                if v is not None:
+                    break
+        try:
+            if v is not None:
+                out.append((s.period_end, float(v)))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+def _series_from_metric(company, key_candidates):
+    if isinstance(key_candidates, str):
+        key_candidates = [key_candidates]
+    for k in key_candidates:
+        qs = (Metric.objects
+              .filter(company=company, key=k)
+              .only("period_end", "value")
+              .order_by("period_end"))
+        data = []
+        for m in qs:
+            try:
+                data.append((m.period_end, float(m.value)))
+            except (TypeError, ValueError):
+                pass
+        if data:
+            return k, data
+    return None, []
+
+def _pairs_json_safe(series):
+    """[(date, val)] -> [[YYYY-MM-DD, val], ...]"""
+    return [[d.isoformat(), v] for d, v in series if d and v is not None]
+
+@cache_page(60 * 10)
+def company_dashboard(request, ticker: str):
+    c = get_object_or_404(Company, ticker=ticker.upper())
+
+    revenue = _series_from_statement(c, "Revenue")
+    eps     = _series_from_statement(c, "EPS", fallbacks=["DilutedEPS", "EPS_Diluted", "BasicEPS", "EPS_Basic"])
+    _, pe   = _series_from_metric(c, "PE_TTM")
+    _, evs  = _series_from_metric(c, "EV_Sales")
+    _, ebt  = _series_from_metric(c, ["EBITDA_TTM", "EBITDA"])
+    if not ebt:
+        ebt = _series_from_statement(c, "EBITDA", fallbacks=["Ebitda"])
+
+    data = {
+        "revenue": _pairs_json_safe(revenue),
+        "eps": _pairs_json_safe(eps),
+        "pe_ttm": _pairs_json_safe(pe),
+        "ev_sales": _pairs_json_safe(evs),
+        "ebitda": _pairs_json_safe(ebt),
+    }
+
+    return render(request, "company_dashboard.html", {
+        "company": c,
+        "series_json": json.dumps(data),
+    })

@@ -120,7 +120,7 @@
               <tr>
                 <td>{{ r.rank }}</td>
                 <td>
-                  <a href="https://finance.yahoo.com/quote/{{ r.ticker }}" target="_blank" rel="noopener">
+                  <a href="{% url 'company-dashboard' r.ticker %}">
                     {{ r.ticker }}
                   </a>
                 </td>
