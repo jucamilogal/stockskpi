@@ -1,28 +1,50 @@
 # core/views.py
-from django.shortcuts import render
-from django.views.decorators.cache import cache_page
+from __future__ import annotations
+
+from django.views.generic import TemplateView
+from django.urls import reverse_lazy
+from django.utils.timezone import now
+from django.shortcuts import render, redirect
+from django.template.loader import get_template
+from django.template import TemplateDoesNotExist
+
 from companies.models import Company
+from fundamentals.models import Metric
+from marketdata.models import PriceBar
 
-# TTLs de caché (segundos)
-CACHE_DASHBOARD = 60 * 3  # 3 minutos; ajusta a gusto
 
-@cache_page(CACHE_DASHBOARD)
+from django.core.cache import cache
+
+class HomeView(TemplateView):
+    template_name = "core/home.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+
+        quick = cache.get("core:quick_stats")
+        if not quick:
+            last_bar = PriceBar.objects.order_by("-date").first()
+            quick = {
+                "companies_count": Company.objects.count(),
+                "metrics_count": Metric.objects.count(),
+                "last_price_date": getattr(last_bar, "date", None),
+                "now": now(),
+            }
+            cache.set("core:quick_stats", quick, timeout=300)  # 5 min
+        ctx["quick_stats"] = quick
+
+        # (resto igual: ctx["sections"] = [...])
+        ...
+        return ctx
+
 def dashboard(request):
     """
-    Vista principal del dashboard.
-    Cacheada para evitar recalcular listados de compañías/sectores con frecuencia.
-    La clave de caché incluye la URL completa (querystring).
+    Fallback del dashboard:
+    - Si existe templates/core/dashboard.html lo renderiza.
+    - Si no existe, redirige al Screener para no romper la navegación.
     """
-    qs = Company.objects.only("ticker", "sector", "name")
-
-    tickers = list(qs.order_by("ticker").values_list("ticker", flat=True))
-    sectors = list(qs.order_by("sector").values_list("sector", flat=True).distinct())
-
-    default_ticker = request.GET.get("ticker") or (tickers[0] if tickers else "AAPL")
-
-    context = {
-        "tickers": tickers,
-        "sectors": sectors,
-        "default_ticker": default_ticker,
-    }
-    return render(request, "dashboard.html", context)
+    try:
+        get_template("core/dashboard.html")
+        return render(request, "core/dashboard.html", {})
+    except TemplateDoesNotExist:
+        return redirect("screener")

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Home · Finboard{% endblock %}
+{% block content %}
+
+<!-- Hero -->
+<section class="mb-6">
+  <h1 class="text-2xl md:text-3xl font-semibold">Tu tablero financiero ligero</h1>
+  <p class="text-slate-600 mt-1">Fundamentales, técnicos, ranking P/E y screener en un solo lugar.</p>
+</section>
+
+<!-- Quick stats -->
+<section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+  <div class="bg-white rounded-2xl shadow p-4">
+    <div class="text-sm text-slate-500">Compañías</div>
+    <div class="text-2xl font-semibold">{{ quick_stats.companies_count|default:"—" }}</div>
+  </div>
+  <div class="bg-white rounded-2xl shadow p-4">
+    <div class="text-sm text-slate-500">Métricas calculadas</div>
+    <div class="text-2xl font-semibold">{{ quick_stats.metrics_count|default:"—" }}</div>
+  </div>
+  <div class="bg-white rounded-2xl shadow p-4">
+    <div class="text-sm text-slate-500">Último precio</div>
+    <div class="text-2xl font-semibold">
+      {% if quick_stats.last_price_date %}{{ quick_stats.last_price_date|date:"Y-m-d" }}{% else %}—{% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- Secciones -->
+<section>
+  <h2 class="text-xl font-semibold mb-3">Secciones</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for s in sections %}
+      <a href="{{ s.url }}" class="group bg-white rounded-2xl shadow p-5 hover:shadow-md transition">
+        <div class="flex items-start gap-3">
+          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+            <span class="text-slate-500 text-xs uppercase">→</span>
+          </div>
+          <div>
+            <div class="font-semibold">{{ s.title }}</div>
+            <p class="text-sm text-slate-600 mt-1">{{ s.desc }}</p>
+            <div class="mt-3 text-sm text-slate-900 group-hover:underline">Ir</div>
+          </div>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% endblock %}

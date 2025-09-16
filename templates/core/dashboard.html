@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Finboard{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Dashboard de mercado</h1>
+<p class="text-slate-600 mb-4">Aquí podrás ver top movers, sectores y resúmenes. (Placeholder)</p>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div class="bg-white rounded-xl shadow p-4">
+    <h2 class="font-semibold mb-2">Top movers (pronto)</h2>
+    <p class="text-sm text-slate-600">Integraremos datos de <code>PriceBar</code> para cambios diarios.</p>
+  </div>
+  <div class="bg-white rounded-xl shadow p-4">
+    <h2 class="font-semibold mb-2">Sectores (pronto)</h2>
+    <p class="text-sm text-slate-600">Distribución por sector y performance relativo.</p>
+  </div>
+</div>
+{% endblock %}

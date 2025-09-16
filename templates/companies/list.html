@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Compañías · Finboard{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-semibold mb-4">Explorar compañías</h1>
+
+<form method="get" class="bg-white rounded-xl p-4 shadow mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+  <div>
+    <label class="block text-sm text-slate-600 mb-1">Buscar</label>
+    <input name="q" value="{{ q }}" placeholder="Ticker o nombre..."
+           class="w-full border rounded px-3 py-2 text-sm">
+  </div>
+  <div>
+    <label class="block text-sm text-slate-600 mb-1">Sector</label>
+    <select name="sector" class="w-full border rounded px-3 py-2 text-sm">
+      <option value="">Todos</option>
+      {% for s in sectors %}
+        <option value="{{ s }}" {% if s == sector %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="flex items-end">
+    <button class="bg-slate-900 text-white px-4 py-2 rounded text-sm">Filtrar</button>
+    {% if q or sector %}
+      <a href="{% url 'companies:list' %}" class="ml-3 text-sm underline">Limpiar</a>
+    {% endif %}
+  </div>
+</form>
+
+<div class="bg-white rounded-xl shadow">
+  <table class="w-full text-sm">
+    <thead class="border-b bg-slate-50">
+      <tr>
+        <th class="text-left p-3">Ticker</th>
+        <th class="text-left p-3">Nombre</th>
+        <th class="text-left p-3">Sector</th>
+        <th class="text-left p-3">Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in companies %}
+        <tr class="border-b last:border-0">
+          <td class="p-3 font-mono">{{ c.ticker }}</td>
+          <td class="p-3">{{ c.name }}</td>
+          <td class="p-3">{{ c.sector|default:"—" }}</td>
+          <td class="p-3">
+            <a class="text-slate-900 underline" href="{% url 'company-dashboard' c.ticker %}">Ver dashboard</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td class="p-4 text-slate-500" colspan="4">No hay resultados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Paginación -->
+{% if is_paginated %}
+  <div class="mt-4 flex gap-2 items-center">
+    {% if page_obj.has_previous %}
+      <a class="px-3 py-1 border rounded" href="?{% if q %}q={{ q }}&{% endif %}{% if sector %}sector={{ sector }}&{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>
+    {% endif %}
+    <span class="text-sm text-slate-600">Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+      <a class="px-3 py-1 border rounded" href="?{% if q %}q={{ q }}&{% endif %}{% if sector %}sector={{ sector }}&{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% endblock %}

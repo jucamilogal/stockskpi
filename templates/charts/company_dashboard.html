@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name|default:ticker }} · {{ ticker }}{% endblock %}
+
+{% block content %}
+<section class="mb-6">
+  <h1 class="text-2xl md:text-3xl font-semibold">
+    {{ company.name|default:ticker }}
+    <span class="text-slate-500 font-normal">· {{ ticker }}</span>
+  </h1>
+  <p class="text-slate-600 mt-1">Precio, ingresos y EBITDA (serie histórica).</p>
+</section>
+
+<!-- Price -->
+<section class="mb-6">
+  <div class="bg-white rounded-2xl shadow p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Precio</h2>
+      <div id="price_status" class="text-xs text-slate-500">Cargando…</div>
+    </div>
+    <div id="price_chart" style="height: 360px;"></div>
+  </div>
+</section>
+
+<!-- Revenue -->
+<section class="mb-6">
+  <div class="bg-white rounded-2xl shadow p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Ingresos (Revenue)</h2>
+      <div id="rev_status" class="text-xs text-slate-500">Cargando…</div>
+    </div>
+    <div id="revenue_chart" style="height: 360px;"></div>
+  </div>
+</section>
+
+<!-- EBITDA -->
+<section class="mb-6">
+  <div class="bg-white rounded-2xl shadow p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">EBITDA</h2>
+      <div class="flex items-center gap-2">
+        <button id="btn_ebitda_A" class="px-3 py-1 border rounded text-sm bg-slate-900 text-white">Annual</button>
+        <button id="btn_ebitda_Q" class="px-3 py-1 border rounded text-sm">Quarterly</button>
+        <div id="ebitda_status" class="text-xs text-slate-500 ml-3">Cargando…</div>
+      </div>
+    </div>
+    <div id="ebitda_chart" style="height: 360px;"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Plotly CDN -->
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<script>
+(function(){
+  const TICKER = "{{ ticker|escapejs }}";
+  const fmtUSD = v => {
+    if (v == null || isNaN(v)) return null;
+    // Formato compacto para billones/millones
+    const abs = Math.abs(v);
+    if (abs >= 1e12) return v/1e12;
+    if (abs >= 1e9)  return v/1e9;
+    if (abs >= 1e6)  return v/1e6;
+    return v;
+  };
+
+  // Utilidades de parseo tolerantes a formato
+  function toSeries(json, opts={}) {
+    // Intenta varios formatos comunes:
+    // 1) {series:[{date:..., value:...}]}
+    if (json && Array.isArray(json.series)) {
+      return json.series.map(d => ({date: d.date || d.as_of || d.period_end, value: +d.value || +d.close || +d.y}));
+    }
+    // 2) {data:[{...}]}
+    if (json && Array.isArray(json.data)) {
+      return json.data.map(d => ({date: d.date || d.as_of || d.period_end, value: +d.value || +d.close || +d.y}));
+    }
+    // 3) {dates:[...], values:[...]}
+    if (json && Array.isArray(json.dates) && Array.isArray(json.values)) {
+      return json.dates.map((d,i) => ({date: d, value: +json.values[i]}));
+    }
+    // 4) array de objetos
+    if (Array.isArray(json)) {
+      return json.map(d => ({date: d.date || d.as_of || d.period_end, value: +d.value || +d.close || +d.y}));
+    }
+    // 5) fallback: intenta campos custom
+    const datesKey = opts.datesKey || "dates";
+    const valsKey  = opts.valsKey  || "values";
+    if (json && Array.isArray(json[datesKey]) && Array.isArray(json[valsKey])) {
+      return json[datesKey].map((d,i) => ({date: d, value: +json[valsKey][i]}));
+    }
+    return [];
+  }
+
+  async function fetchJSON(url) {
+    const r = await fetch(url, {headers: {"Accept":"application/json"}});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  }
+
+  function noData(containerId, statusId) {
+    document.getElementById(statusId).textContent = "Sin datos";
+    Plotly.purge(containerId);
+    const el = document.getElementById(containerId);
+    el.innerHTML = '<div class="text-sm text-slate-500">No hay datos para mostrar.</div>';
+  }
+
+  // -------- Precio --------
+  (async function drawPrice(){
+    const statusId = "price_status";
+    const containerId = "price_chart";
+    try {
+      const json = await fetchJSON(`/api/charts/${encodeURIComponent(TICKER)}/price/`);
+      const series = toSeries(json);
+      if (!series.length) return noData(containerId, statusId);
+
+      const x = series.map(d => d.date);
+      const y = series.map(d => d.value);
+
+      const trace = { x, y, mode: "lines", name: "Close" };
+      const layout = {
+        margin: {t: 30, r: 10, b: 40, l: 50},
+        xaxis: {type: "date"},
+        yaxis: {tickprefix: "USD "},
+      };
+      Plotly.newPlot(containerId, [trace], layout, {responsive:true});
+      document.getElementById(statusId).textContent = `Puntos: ${series.length}`;
+    } catch (e) {
+      document.getElementById("price_status").textContent = "Error cargando";
+      console.error("price error:", e);
+    }
+  })();
+
+  // -------- Revenue --------
+  (async function drawRevenue(){
+    const statusId = "rev_status";
+    const containerId = "revenue_chart";
+    try {
+      const json = await fetchJSON(`/api/charts/${encodeURIComponent(TICKER)}/revenue/`);
+      const series = toSeries(json);
+      if (!series.length) return noData(containerId, statusId);
+
+      const x = series.map(d => d.date);
+      const raw = series.map(d => d.value);
+      const y = raw.map(fmtUSD);
+      const unit = raw.some(v => Math.abs(v) >= 1e12) ? "T" :
+                   raw.some(v => Math.abs(v) >= 1e9)  ? "B" :
+                   raw.some(v => Math.abs(v) >= 1e6)  ? "M" : "";
+
+      const trace = { x, y, type: "bar", name: "Revenue" };
+      const layout = {
+        margin: {t: 30, r: 10, b: 40, l: 60},
+        xaxis: {type: "date"},
+        yaxis: {tickprefix: "USD ", ticksuffix: unit},
+      };
+      Plotly.newPlot(containerId, [trace], layout, {responsive:true});
+      document.getElementById(statusId).textContent = `Puntos: ${series.length}`;
+    } catch (e) {
+      document.getElementById(statusId).textContent = "Error cargando";
+      console.error("revenue error:", e);
+    }
+  })();
+
+  // -------- EBITDA (serie histórica, usando el nuevo endpoint) --------
+  let currentPeriod = "annual"; // "annual" | "quarterly"
+  const btnA = document.getElementById("btn_ebitda_A");
+  const btnQ = document.getElementById("btn_ebitda_Q");
+
+  function setBtns() {
+    if (currentPeriod === "annual") {
+      btnA.classList.add("bg-slate-900","text-white");
+      btnQ.classList.remove("bg-slate-900","text-white");
+    } else {
+      btnQ.classList.add("bg-slate-900","text-white");
+      btnA.classList.remove("bg-slate-900","text-white");
+    }
+  }
+
+  async function drawEBITDA(){
+    const statusId = "ebitda_status";
+    const containerId = "ebitda_chart";
+    try {
+      document.getElementById(statusId).textContent = "Cargando…";
+      const url = `/api/metrics/${encodeURIComponent(TICKER)}/series/?key=ebitda&period=${currentPeriod}`;
+      const json = await fetchJSON(url);
+      const series = toSeries(json);
+      if (!series.length) return noData(containerId, statusId);
+
+      const x = series.map(d => d.date);
+      const raw = series.map(d => d.value);
+      const y = raw.map(fmtUSD);
+      const unit = raw.some(v => Math.abs(v) >= 1e12) ? "T" :
+                   raw.some(v => Math.abs(v) >= 1e9)  ? "B" :
+                   raw.some(v => Math.abs(v) >= 1e6)  ? "M" : "";
+
+      const trace = { x, y, mode: "lines+markers", name: "EBITDA" };
+      const layout = {
+        margin: {t: 30, r: 10, b: 40, l: 60},
+        xaxis: {type: "date"},
+        yaxis: {tickprefix: "USD ", ticksuffix: unit},
+      };
+      Plotly.newPlot(containerId, [trace], layout, {responsive:true});
+      document.getElementById(statusId).textContent = `Puntos: ${series.length} · ${currentPeriod}`;
+    } catch (e) {
+      document.getElementById("ebitda_status").textContent = "Error cargando";
+      console.error("ebitda error:", e);
+    }
+  }
+
+  btnA.addEventListener("click", () => { currentPeriod = "annual"; setBtns(); drawEBITDA(); });
+  btnQ.addEventListener("click", () => { currentPeriod = "quarter"; setBtns(); drawEBITDA(); });
+
+  setBtns();
+  drawEBITDA();
+})();
+</script>
+{% endblock %}
